@@ -1,0 +1,174 @@
+"""
+Compute and save statistics for ROH ages and sizes across demographies.
+Includes age statistics (mean, mode, median, range) and ROH summary statistics (NROH, SROH).
+"""
+import numpy as np
+import pandas as pd
+from scipy import stats
+import argparse
+
+# Size interval definitions
+SIZE_INTERVALS = [
+    (50e3, 100e3),
+    (100e3, 200e3),
+    (200e3, 500e3),
+    (500e3, 1e6),
+    (1e6, 2e6),
+    (2e6, 5e6),
+    (5e6, 10e6),
+    (10e6, 20e6),
+    (20e6, 100e6)
+]
+
+ROW_LABELS = [
+    '50 KB to 100 KB', '100 KB to 200 KB', '200 KB to 500 KB',
+    '500 KB to 1 MB', '1 MB to 2 MB', '2 MB to 5 MB',
+    '5 MB to 10 MB', '10 MB to 20 MB', '20 MB to 100 MB'
+]
+
+
+def load_data(ages_file, sizes_file):
+    """Load ages and sizes data from files."""
+    ages = np.genfromtxt(ages_file, delimiter=',').astype(int)
+    sizes = np.genfromtxt(sizes_file, delimiter=',').astype(int)
+    return ages, sizes
+
+
+def filter_ages_by_intervals(ages, sizes):
+    """Filter ages into size interval bins."""
+    filtered_ages = []
+    for min_size, max_size in SIZE_INTERVALS:
+        mask = (sizes >= min_size) & (sizes <= max_size)
+        filtered_ages.append(ages[mask])
+    return filtered_ages
+
+
+def compute_age_statistics(filtered_ages_list, output_file):
+    """Compute and save age statistics table."""
+    table_rows = []
+    
+    for i, ages in enumerate(filtered_ages_list):
+        if len(ages) == 0:
+            table_rows.append([np.nan, np.nan, np.nan, [np.nan, np.nan], [np.nan, np.nan]])
+            continue
+            
+        # Mean
+        mean = np.mean(ages)
+        
+        # Mode (the most frequent value)
+        mode_result = stats.mode(ages, nan_policy='omit')
+        mode = mode_result[0] if hasattr(mode_result[0], '__len__') == False else mode_result[0]
+        
+        # Median
+        median = np.median(ages)
+        
+        # Range (max and min values)
+        value_range = [np.max(ages), np.min(ages)]
+        
+        # 90% Range (5th percentile to 95th percentile)
+        lower_percentile = np.percentile(ages, 5)
+        upper_percentile = np.percentile(ages, 95)
+        range_90 = [upper_percentile, lower_percentile]
+        
+        table_rows.append([mean, mode, median, value_range, range_90])
+    
+    table = pd.DataFrame(
+        table_rows,
+        columns=["Mean", "Mode", "Median", "Range", "90% Range"],
+        index=ROW_LABELS
+    )
+    table.to_csv(output_file)
+    return table
+
+
+def compute_roh_statistics(sizes_data_dict, output_file):
+    """Compute and save ROH summary statistics (NROH, SROH)."""
+    table_data = []
+    
+    for demography_name, sizes in sizes_data_dict.items():
+        NROH = len(sizes)
+        SROH = sum(sizes)
+        table_data.append([demography_name, NROH, SROH])
+    
+    table = pd.DataFrame(table_data, columns=['Demography', 'NROH', 'SROH'])
+    table.to_csv(output_file, index=False)
+    return table
+
+
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser(
+        description="Compute statistics for ROH data."
+    )
+    parser.add_argument(
+        "--big-small-dir",
+        default="../big_small",
+        help="Directory containing big/small demography data"
+    )
+    parser.add_argument(
+        "--bott-exp-dir",
+        default="../bott_exp",
+        help="Directory containing bottleneck/expansion demography data"
+    )
+    parser.add_argument(
+        "--compute",
+        nargs='+',
+        choices=['age', 'roh', 'all'],
+        default=['all'],
+        help="Which statistics to compute"
+    )
+    args = parser.parse_args()
+    
+    # Determine what to compute
+    compute_age = 'all' in args.compute or 'age' in args.compute
+    compute_roh = 'all' in args.compute or 'roh' in args.compute
+    
+    # Define demography configurations
+    demography_configs = {
+        'small': {
+            'ages_file': f'{args.big_small_dir}/ages_small.txt',
+            'sizes_file': f'{args.big_small_dir}/sizes_small.txt',
+            'display_name': 'Small'
+        },
+        'big': {
+            'ages_file': f'{args.big_small_dir}/ages_big.txt',
+            'sizes_file': f'{args.big_small_dir}/sizes_big.txt',
+            'display_name': 'Big'
+        },
+        'exp': {
+            'ages_file': f'{args.bott_exp_dir}/ages_exp.txt',
+            'sizes_file': f'{args.bott_exp_dir}/sizes_exp.txt',
+            'display_name': 'Expanding'
+        },
+        'bottle': {
+            'ages_file': f'{args.bott_exp_dir}/ages_bottle.txt',
+            'sizes_file': f'{args.bott_exp_dir}/sizes_bottle.txt',
+            'display_name': 'Bottleneck'
+        }
+    }
+    
+    # Load all data
+    all_data = {}
+    for demo_key, config in demography_configs.items():
+        print(f"Loading {config['display_name']} data...")
+        all_data[demo_key] = load_data(config['ages_file'], config['sizes_file'])
+    
+    # Compute age statistics
+    if compute_age:
+        print("\nComputing age statistics...")
+        for demo_key, config in demography_configs.items():
+            ages, sizes = all_data[demo_key]
+            filtered_ages = filter_ages_by_intervals(ages, sizes)
+            output_file = f'age_statistics_table_{demo_key}.csv'
+            compute_age_statistics(filtered_ages, output_file)
+            print(f"  Saved {output_file}")
+    
+    # Compute ROH statistics
+    if compute_roh:
+        print("\nComputing ROH statistics...")
+        sizes_dict = {
+            config['display_name']: all_data[demo_key][1] 
+            for demo_key, config in demography_configs.items()
+        }
+        compute_roh_statistics(sizes_dict, 'roh_statistics_table.csv')
+        print("  Saved roh_statistics_table.csv")
+    
