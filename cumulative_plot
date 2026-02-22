@@ -1,0 +1,147 @@
+"""
+Cumulative distribution plots comparing ROH age across all demographies.
+Creates one plot per size interval comparing small, big, bottleneck, and expansion.
+"""
+import numpy as np
+import matplotlib.pyplot as plt
+import matplotlib
+import argparse
+
+matplotlib.use('Agg')
+
+# Size interval definitions
+SIZE_INTERVALS = [
+    (50e3, 100e3, '50kb and 100kb'),
+    (100e3, 200e3, '100kb and 200kb'),
+    (200e3, 500e3, '200kb and 500kb'),
+    (500e3, 1e6, '500kb and 1Mb'),
+    (1e6, 2e6, '1Mb and 2Mb'),
+    (2e6, 5e6, '2Mb and 5Mb'),
+    (5e6, 10e6, '5Mb and 10Mb'),
+    (10e6, 20e6, '10Mb and 20Mb'),
+    (20e6, 100e6, '20Mb and 100Mb')
+]
+
+# Colors for each demography
+COLORS = {
+    'small': 'skyblue',
+    'big': 'navy',
+    'exp': 'pink',
+    'bottle': 'lightcoral'
+}
+
+LABELS = {
+    'small': 'small population',
+    'big': 'big population',
+    'exp': 'expanding population',
+    'bottle': 'bottleneck population'
+}
+
+
+def load_data(ages_file, sizes_file):
+    """Load ages and sizes data from files."""
+    ages = np.genfromtxt(ages_file, delimiter=',').astype(int)
+    sizes = np.genfromtxt(sizes_file, delimiter=',').astype(int)
+    return ages, sizes
+
+
+def filter_by_size_interval(ages, sizes, min_size, max_size):
+    """Filter ages by size interval."""
+    mask = (sizes >= min_size) & (sizes <= max_size)
+    return ages[mask]
+
+
+def compute_cumulative(ages):
+    """Compute cumulative distribution."""
+    sorted_ages = np.sort(ages)
+    cumulative = np.arange(1, len(sorted_ages) + 1) / len(sorted_ages)
+    return sorted_ages, cumulative
+
+
+def create_cumulative_plot(data_dict, interval_label, output_file, xlim_right=1e5):
+    """Create cumulative distribution plot for all demographies."""
+    plt.figure(figsize=(10, 6))
+    
+    for demo_key in ['small', 'big', 'exp', 'bottle']:
+        if demo_key in data_dict and len(data_dict[demo_key]) > 0:
+            sorted_ages, cumulative = compute_cumulative(data_dict[demo_key])
+            plt.plot(sorted_ages, cumulative, 
+                    label=LABELS[demo_key], 
+                    color=COLORS[demo_key])
+    
+    plt.xscale('log')
+    plt.title(f'Cumulative Distribution of age of ROH with sizes between {interval_label}', 
+              fontsize=16)
+    plt.xlabel('ROH Age (Log scale)', fontsize=14)
+    plt.ylabel('Cumulative Frequency', fontsize=14)
+    plt.xlim(right=xlim_right)
+    plt.subplots_adjust(right=0.75)
+    plt.legend(loc='center left', bbox_to_anchor=(1, 0.5))
+    
+    plt.savefig(output_file)
+    plt.close()
+
+
+def load_all_demographies(big_small_dir, bott_exp_dir):
+    """Load data for all demographies."""
+    data = {}
+    
+    data['small'] = load_data(
+        f'{big_small_dir}/ages_small.txt',
+        f'{big_small_dir}/sizes_small.txt'
+    )
+    data['big'] = load_data(
+        f'{big_small_dir}/ages_big.txt',
+        f'{big_small_dir}/sizes_big.txt'
+    )
+    data['bottle'] = load_data(
+        f'{bott_exp_dir}/ages_bottle.txt',
+        f'{bott_exp_dir}/sizes_bottle.txt'
+    )
+    data['exp'] = load_data(
+        f'{bott_exp_dir}/ages_exp.txt',
+        f'{bott_exp_dir}/sizes_exp.txt'
+    )
+    
+    return data
+
+
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser(
+        description="Generate cumulative distribution plots comparing demographies."
+    )
+    parser.add_argument(
+        "--big-small-dir",
+        default="../big_small",
+        help="Directory containing big/small demography data"
+    )
+    parser.add_argument(
+        "--bott-exp-dir",
+        default="../bott_exp",
+        help="Directory containing bottleneck/expansion demography data"
+    )
+    parser.add_argument(
+        "--xlim",
+        type=float,
+        default=1e5,
+        help="Right x-axis limit"
+    )
+    args = parser.parse_args()
+    
+    # Load all data
+    print("Loading data from all demographies...")
+    all_data = load_all_demographies(args.big_small_dir, args.bott_exp_dir)
+    
+    # Process each size interval
+    for i, (min_size, max_size, interval_label) in enumerate(SIZE_INTERVALS):
+        print(f"Creating plot for {interval_label}...")
+        
+        # Filter data for this interval
+        interval_data = {}
+        for demo_key, (ages, sizes) in all_data.items():
+            interval_data[demo_key] = filter_by_size_interval(ages, sizes, min_size, max_size)
+        
+        output_file = f'cumu_{i+1}.png'
+        create_cumulative_plot(interval_data, interval_label, output_file, args.xlim)
+        print(f"  Saved {output_file}")
+  
