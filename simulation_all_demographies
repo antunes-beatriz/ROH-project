@@ -1,0 +1,140 @@
+"""
+Simulation script for all demographies: big, small, bottleneck, and expansion.
+Runs msprime simulations and saves ROH ages and sizes.
+"""
+import msprime
+import tskit
+import numpy as np
+import argparse
+
+
+def calculate_mrca_for_segment(ts, left, right, pair):
+    """Calculate MRCA age for a given segment."""
+    tree = ts.at(left)
+    age = tree.time(tree.mrca(pair[0, 0], pair[0, 1]))
+    return age
+
+
+def process_segments(ts, left, right, seed, pair):
+    """Process all segments and return ages and sizes."""
+    ages = []
+    sizes = []
+    for i in range(len(left)):
+        age = calculate_mrca_for_segment(ts, left[i], right[i], pair)
+        size = right[i] - left[i]
+        ages.append(age)
+        sizes.append(size)
+    return ages, sizes
+
+
+def run_simulation(seed, demography, model="dtwf", ploidy=2, 
+                   recombination_rate=1e-08, sequence_length=1e8):
+    """Run msprime simulation and extract IBD segments."""
+    ts = msprime.sim_ancestry(
+        samples=200,
+        demography=demography,
+        random_seed=seed,
+        model=model,
+        ploidy=ploidy,
+        recombination_rate=recombination_rate,
+        sequence_length=sequence_length
+    )
+    
+    all_ages = []
+    all_sizes = []
+    
+    for i in range(0, 200, 2):
+        segments = ts.ibd_segments(within=[i, i + 1], store_segments=True, min_span=50000)
+        elements = next(iter(segments.values()))
+        ages, sizes = process_segments(ts, elements.left, elements.right, seed, segments.pairs)
+        all_ages.append(ages)
+        all_sizes.append(sizes)
+    
+    return all_ages, all_sizes
+
+
+def save_results(ages, sizes, prefix, seed):
+    """Flatten and save ages and sizes to files."""
+    ages_flat = [item for sublist in ages for item in sublist]
+    sizes_flat = [item for sublist in sizes for item in sublist]
+    np.savetxt(f'{prefix}_ages_{seed}.txt', ages_flat, fmt='%d', delimiter=',')
+    np.savetxt(f'{prefix}_sizes_{seed}.txt', sizes_flat, fmt='%d', delimiter=',')
+
+
+def define_demographies():
+    """Define all demography models."""
+    demographies = {}
+    
+    # Big population (Ne = 2000)
+    demography_big = msprime.Demography()
+    demography_big.add_population(initial_size=2000)
+    demographies['big'] = {'demography': demography_big, 'model': 'dtwf'}
+    
+    # Small population (Ne = 200)
+    demography_small = msprime.Demography()
+    demography_small.add_population(initial_size=200)
+    demographies['small'] = {'demography': demography_small, 'model': 'dtwf'}
+    
+    # Bottleneck population
+    demography_bottle = msprime.Demography()
+    demography_bottle.add_population(initial_size=2000, name="A")
+    demography_bottle.add_instantaneous_bottleneck(time=25, strength=200, population="A")
+    demographies['bottle'] = {'demography': demography_bottle, 'model': None}  # Uses default
+    
+    # Expanding population
+    demography_exp = msprime.Demography()
+    demography_exp.add_population(initial_size=2000, growth_rate=0.03)
+    demographies['exp'] = {'demography': demography_exp, 'model': 'dtwf'}
+    
+    return demographies
+
+
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser(
+        description="Run msprime simulations for all demographies."
+    )
+    parser.add_argument("seed", type=int, help="Random seed for the simulation")
+    parser.add_argument(
+        "--demographies", 
+        nargs='+', 
+        choices=['big', 'small', 'bottle', 'exp', 'all'],
+        default=['all'],
+        help="Which demographies to simulate (default: all)"
+    )
+    args = parser.parse_args()
+    
+    seed = args.seed
+    demographies = define_demographies()
+    
+    # Determine which demographies to run
+    if 'all' in args.demographies:
+        to_run = list(demographies.keys())
+    else:
+        to_run = args.demographies
+    
+    # Run simulations
+    for name in to_run:
+        print(f"Running simulation for {name} demography...")
+        config = demographies[name]
+        
+        if config['model']:
+            ages, sizes = run_simulation(
+                seed, 
+                config['demography'], 
+                model=config['model'],
+                ploidy=2,
+                recombination_rate=1e-08,
+                sequence_length=100e6
+            )
+        else:
+            ages, sizes = run_simulation(
+                seed,
+                config['demography'],
+                ploidy=2,
+                recombination_rate=1e-08,
+                sequence_length=100e6
+            )
+        
+        save_results(ages, sizes, name, seed)
+        print(f"  Saved {name}_ages_{seed}.txt and {name}_sizes_{seed}.txt")
+    
