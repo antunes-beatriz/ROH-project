@@ -1,0 +1,142 @@
+"""
+Boxplot visualization of ROH age distributions across size intervals.
+Creates boxplots for each demography (small, big, bottleneck, expansion).
+"""
+import numpy as np
+import matplotlib.pyplot as plt
+import matplotlib
+import argparse
+
+matplotlib.use('Agg')
+
+# Size interval definitions
+SIZE_INTERVALS = [
+    (50e3, 100e3),
+    (100e3, 200e3),
+    (200e3, 500e3),
+    (500e3, 1e6),
+    (1e6, 2e6),
+    (2e6, 5e6),
+    (5e6, 10e6),
+    (10e6, 20e6),
+    (20e6, 100e6)
+]
+
+SIZE_LABELS = [
+    '50 kb to 100 kb', '100 kb to 200 kb', '200 kb to 500 kb',
+    '500 kb to 1 Mb', '1 Mb to 2 Mb', '2 Mb to 5 Mb',
+    '5 Mb to 10 Mb', '10 Mb to 20 Mb', '20 Mb to 100 Mb'
+]
+
+
+def load_data(ages_file, sizes_file):
+    """Load ages and sizes data from files."""
+    ages = np.genfromtxt(ages_file, delimiter=',').astype(int)
+    sizes = np.genfromtxt(sizes_file, delimiter=',').astype(int)
+    return ages, sizes
+
+
+def filter_ages_by_intervals(ages, sizes):
+    """Filter ages into size interval bins."""
+    filtered_ages = []
+    for min_size, max_size in SIZE_INTERVALS:
+        mask = (sizes >= min_size) & (sizes <= max_size)
+        filtered_ages.append(ages[mask])
+    return filtered_ages
+
+
+def create_boxplot(boxplot_data, title, output_file):
+    """Create and save a boxplot."""
+    fig, ax = plt.subplots(figsize=(10, 6))
+    
+    ax.boxplot(boxplot_data, notch=True, patch_artist=True)
+    ax.set_yscale('log')
+    ax.set_title(title, fontsize=16)
+    ax.set_xlabel('Size Intervals', fontsize=14)
+    ax.set_ylabel('Age (Log scale)', fontsize=14)
+    ax.set_xticklabels(SIZE_LABELS, rotation=45, ha='right', fontsize=12)
+    
+    plt.tight_layout()
+    plt.savefig(output_file)
+    plt.close(fig)
+
+
+def process_demography(ages_file, sizes_file, demography_name, output_file):
+    """Process and create boxplot for a single demography."""
+    ages, sizes = load_data(ages_file, sizes_file)
+    filtered_ages = filter_ages_by_intervals(ages, sizes)
+    
+    title = f'Boxplots of ROH age for {demography_name} population'
+    create_boxplot(filtered_ages, title, output_file)
+
+
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser(
+        description="Generate boxplot visualizations for ROH ages."
+    )
+    parser.add_argument(
+        "--big-small-dir",
+        default="../big_small",
+        help="Directory containing big/small demography data"
+    )
+    parser.add_argument(
+        "--bott-exp-dir",
+        default="../bott_exp",
+        help="Directory containing bottleneck/expansion demography data"
+    )
+    parser.add_argument(
+        "--demographies",
+        nargs='+',
+        choices=['small', 'big', 'bottle', 'exp', 'all'],
+        default=['all'],
+        help="Which demographies to plot"
+    )
+    args = parser.parse_args()
+    
+    # Define demography configurations
+    demography_configs = {
+        'small': {
+            'ages_file': f'{args.big_small_dir}/ages_small.txt',
+            'sizes_file': f'{args.big_small_dir}/sizes_small.txt',
+            'name': 'small',
+            'output': 'Boxplot_small.png'
+        },
+        'big': {
+            'ages_file': f'{args.big_small_dir}/ages_big.txt',
+            'sizes_file': f'{args.big_small_dir}/sizes_big.txt',
+            'name': 'big',
+            'output': 'Boxplot_big.png'
+        },
+        'bottle': {
+            'ages_file': f'{args.bott_exp_dir}/ages_bottle.txt',
+            'sizes_file': f'{args.bott_exp_dir}/sizes_bottle.txt',
+            'name': 'bottleneck',
+            'output': 'Boxplot_bott.png'
+        },
+        'exp': {
+            'ages_file': f'{args.bott_exp_dir}/ages_exp.txt',
+            'sizes_file': f'{args.bott_exp_dir}/sizes_exp.txt',
+            'name': 'expanding',
+            'output': 'Boxplot_exp.png'
+        }
+    }
+    
+    # Determine which to process
+    if 'all' in args.demographies:
+        to_process = list(demography_configs.keys())
+    else:
+        to_process = args.demographies
+    
+    # Process each demography
+    for demo_key in to_process:
+        config = demography_configs[demo_key]
+        print(f"Creating boxplot for {config['name']} demography...")
+        
+        process_demography(
+            config['ages_file'],
+            config['sizes_file'],
+            config['name'],
+            config['output']
+        )
+        print(f"  Saved {config['output']}")
+    
