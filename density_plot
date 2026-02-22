@@ -1,0 +1,122 @@
+"""
+Hexbin density plots of ROH age vs size for all demographies.
+Creates density visualizations showing the distribution of ROH age against size.
+"""
+import numpy as np
+import matplotlib.pyplot as plt
+import matplotlib
+import argparse
+
+matplotlib.use('Agg')
+
+
+def load_data(ages_file, sizes_file):
+    """Load ages and sizes data from files."""
+    ages = np.genfromtxt(ages_file, delimiter=',').astype(int)
+    sizes = np.genfromtxt(sizes_file, delimiter=',').astype(int)
+    return ages, sizes
+
+
+def create_hexbin_plot(ages, sizes, title, output_file, gridsize=50, cmap='Blues'):
+    """Create and save a hexbin density plot."""
+    plt.figure(figsize=(10, 6))
+    
+    hb = plt.hexbin(
+        ages, sizes, 
+        gridsize=gridsize, 
+        cmap=cmap,
+        bins='log', 
+        xscale='log', 
+        yscale='log', 
+        mincnt=1
+    )
+    
+    cb = plt.colorbar(hb)
+    cb.set_label('Log(count) in bin', fontsize=14)
+    
+    plt.xlabel('Age of ROH (Log Scale)', fontsize=14)
+    plt.ylabel('Size of ROH (Log Scale)', fontsize=14)
+    plt.title(title, fontsize=16)
+    
+    plt.tight_layout()
+    plt.savefig(output_file, dpi=300)
+    plt.close()
+
+
+def process_demography(ages_file, sizes_file, demography_name, output_file):
+    """Process and create hexbin plot for a single demography."""
+    ages, sizes = load_data(ages_file, sizes_file)
+    title = f'Density of ROH age vs size for {demography_name} population'
+    create_hexbin_plot(ages, sizes, title, output_file)
+
+
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser(
+        description="Generate hexbin density plots for ROH age vs size."
+    )
+    parser.add_argument(
+        "--big-small-dir",
+        default="../big_small",
+        help="Directory containing big/small demography data"
+    )
+    parser.add_argument(
+        "--bott-exp-dir",
+        default="../bott_exp",
+        help="Directory containing bottleneck/expansion demography data"
+    )
+    parser.add_argument(
+        "--demographies",
+        nargs='+',
+        choices=['small', 'big', 'bottle', 'exp', 'all'],
+        default=['all'],
+        help="Which demographies to plot"
+    )
+    args = parser.parse_args()
+    
+    # Define demography configurations
+    demography_configs = {
+        'big': {
+            'ages_file': f'{args.big_small_dir}/ages_big.txt',
+            'sizes_file': f'{args.big_small_dir}/sizes_big.txt',
+            'name': 'big',
+            'output': 'Big_age_size_density.png'
+        },
+        'small': {
+            'ages_file': f'{args.big_small_dir}/ages_small.txt',
+            'sizes_file': f'{args.big_small_dir}/sizes_small.txt',
+            'name': 'small',
+            'output': 'Small_age_size_density.png'
+        },
+        'exp': {
+            'ages_file': f'{args.bott_exp_dir}/ages_exp.txt',
+            'sizes_file': f'{args.bott_exp_dir}/sizes_exp.txt',
+            'name': 'expanding',
+            'output': 'Expanding_age_size_density.png'
+        },
+        'bottle': {
+            'ages_file': f'{args.bott_exp_dir}/ages_bottle.txt',
+            'sizes_file': f'{args.bott_exp_dir}/sizes_bottle.txt',
+            'name': 'bottleneck',
+            'output': 'Bott_age_size_density.png'
+        }
+    }
+    
+    # Determine which to process
+    if 'all' in args.demographies:
+        to_process = list(demography_configs.keys())
+    else:
+        to_process = args.demographies
+    
+    # Process each demography
+    for demo_key in to_process:
+        config = demography_configs[demo_key]
+        print(f"Creating hexbin plot for {config['name']} demography...")
+        
+        process_demography(
+            config['ages_file'],
+            config['sizes_file'],
+            config['name'],
+            config['output']
+        )
+        print(f"  Saved {config['output']}")
+    
