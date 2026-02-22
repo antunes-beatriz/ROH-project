@@ -1,0 +1,165 @@
+"""
+Histogram plots of ROH age for all demographies across size intervals.
+"""
+import numpy as np
+import matplotlib.pyplot as plt
+import matplotlib
+import argparse
+
+matplotlib.use('Agg')
+
+# Size interval definitions
+SIZE_INTERVALS = [
+    (50e3, 100e3, '50kb_100kb'),
+    (100e3, 200e3, '100kb_200kb'),
+    (200e3, 500e3, '200kb_500kb'),
+    (500e3, 1e6, '500kb_1Mb'),
+    (1e6, 2e6, '1Mb_2Mb'),
+    (2e6, 5e6, '2Mb_5Mb'),
+    (5e6, 10e6, '5Mb_10Mb'),
+    (10e6, 20e6, '10Mb_20Mb'),
+    (20e6, 100e6, '20Mb_100Mb')
+]
+
+SIZE_LABELS = [
+    '50kb and 100kb', '100kb and 200kb', '200kb and 500kb',
+    '500kb and 1Mb', '1Mb and 2Mb', '2Mb and 5Mb',
+    '5Mb and 10Mb', '10Mb and 20Mb', '20Mb and 100Mb'
+]
+
+
+def load_data(ages_file, sizes_file):
+    """Load ages and sizes data from files."""
+    ages = np.genfromtxt(ages_file, delimiter=',').astype(int)
+    sizes = np.genfromtxt(sizes_file, delimiter=',').astype(int)
+    return ages, sizes
+
+
+def filter_by_size_interval(ages, sizes, min_size, max_size):
+    """Filter ages by size interval."""
+    mask = (sizes >= min_size) & (sizes <= max_size)
+    return ages[mask]
+
+
+def create_histogram(filtered_ages, title, output_file, xlim_right=1e5, add_one=False):
+    """Create and save a histogram plot."""
+    if add_one:
+        filtered_ages = filtered_ages + 1
+    
+    if len(filtered_ages) == 0:
+        print(f"Warning: No data for {output_file}, skipping...")
+        return
+    
+    fig, ax = plt.subplots(figsize=(10, 6))
+    
+    bins = np.logspace(
+        np.log10(min(filtered_ages)), 
+        np.log10(max(filtered_ages)), 
+        30
+    )
+    
+    ax.hist(filtered_ages, color='skyblue', edgecolor='black', bins=bins)
+    ax.set_xscale('log')
+    ax.set_title(title, fontsize=16)
+    ax.set_xlabel('ROH Age (Log scale)', fontsize=14)
+    ax.set_ylabel('Frequency', fontsize=14)
+    ax.set_xlim(left=0, right=xlim_right)
+    
+    fig.savefig(output_file)
+    plt.close(fig)
+
+
+def process_demography(ages_file, sizes_file, demography_name, output_prefix, 
+                       xlim_right=1e5, add_one=False):
+    """Process all size intervals for a single demography."""
+    ages, sizes = load_data(ages_file, sizes_file)
+    
+    for i, (min_size, max_size, interval_name) in enumerate(SIZE_INTERVALS):
+        filtered_ages = filter_by_size_interval(ages, sizes, min_size, max_size)
+        
+        title = f'Histogram of age from ROH sizes from {demography_name} population between {SIZE_LABELS[i]}'
+        output_file = f'{output_prefix}_{i+1}.png'
+        
+        create_histogram(filtered_ages, title, output_file, xlim_right, add_one)
+        print(f"  Created {output_file}")
+
+
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser(
+        description="Generate histogram plots for ROH ages by size interval."
+    )
+    parser.add_argument(
+        "--data-dir",
+        default=".",
+        help="Directory containing the data files"
+    )
+    parser.add_argument(
+        "--demographies",
+        nargs='+',
+        choices=['big', 'small', 'bottle', 'exp', 'all'],
+        default=['all'],
+        help="Which demographies to plot"
+    )
+    args = parser.parse_args()
+    
+    # Define demography configurations
+    demography_configs = {
+        'big': {
+            'ages_file': 'ages_big.txt',
+            'sizes_file': 'sizes_big.txt',
+            'name': 'big',
+            'prefix': 'hist_big',
+            'xlim': 1e5,
+            'add_one': False
+        },
+        'small': {
+            'ages_file': 'ages_small.txt',
+            'sizes_file': 'sizes_small.txt',
+            'name': 'small',
+            'prefix': 'hist_small',
+            'xlim': 1e4,
+            'add_one': False
+        },
+        'bottle': {
+            'ages_file': 'ages_bottle.txt',
+            'sizes_file': 'sizes_bottle.txt',
+            'name': 'bottleneck',
+            'prefix': 'hist_bott',
+            'xlim': None,  # No limit
+            'add_one': True
+        },
+        'exp': {
+            'ages_file': 'ages_exp.txt',
+            'sizes_file': 'sizes_exp.txt',
+            'name': 'expanding',
+            'prefix': 'hist_exp',
+            'xlim': 1e3,
+            'add_one': False
+        }
+    }
+    
+    # Determine which to process
+    if 'all' in args.demographies:
+        to_process = list(demography_configs.keys())
+    else:
+        to_process = args.demographies
+    
+    # Process each demography
+    for demo_key in to_process:
+        config = demography_configs[demo_key]
+        print(f"Processing {config['name']} demography...")
+        
+        ages_path = f"{args.data_dir}/{config['ages_file']}"
+        sizes_path = f"{args.data_dir}/{config['sizes_file']}"
+        
+        xlim = config['xlim'] if config['xlim'] else 1e5
+        
+        process_demography(
+            ages_path,
+            sizes_path,
+            config['name'],
+            config['prefix'],
+            xlim,
+            config['add_one']
+        )
+    
