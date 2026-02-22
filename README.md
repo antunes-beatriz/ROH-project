@@ -1,1 +1,4 @@
-# ROH-project
+## Estimating the age of runs of homozygosity in silico
+
+#### Abstract
+Runs of homozygosity (ROH) are defined as contiguous stretches of homozygous genotypes within an individual’s genome. They provide valuable insights into population history, inbreeding and genetic diversity. The aim of this study is to address the inaccuracies in the existing literature concerning the distribution of ROH age, which is calculated as the number of generations since the ROH was formed. Four distinct demographic scenarios were employed in coalescent-based simulations to generate ancestral trees in which the ROH of sampled individuals were identified, and their size and age were estimated. The results demonstrate a strong negative correlation between the size of ROH segments and their age. Moreover, a comparative analysis using cumulative plots across different demographic scenarios highlights the significant influence of population history on the formation and persistence of ROH.
